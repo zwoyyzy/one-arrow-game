@@ -5,6 +5,7 @@ from levels import LEVELS
 from ui import (
     Button,
     draw_game_screen,
+    draw_level_select_screen,
     draw_result_screen,
     draw_start_screen,
     get_board_geometry,
@@ -17,6 +18,8 @@ PLAYING = "playing"
 LEVEL_CLEAR = "level_clear"
 GAME_OVER = "game_over"
 ALL_CLEAR = "all_clear"
+PAUSED = "paused"
+LEVEL_SELECT = "level_select"
 
 FLYING_SPEED = 700
 
@@ -38,33 +41,85 @@ class Game:
         self.feedback_end_time = 0
         self.blocked_arrow = None
         self.pending_game_over = False
+        self.level_start_time = 0
+        self.mistakes_used = 0
+        self.result_time_seconds = 0
+        self.moves_count = 0
 
         window_width, _ = self.screen.get_size()
 
         self.start_button = Button(
             x=window_width // 2 - 120,
-            y=505,
+            y=465,
             width=240,
             height=65,
-            text="开始游戏",
+            text="开启解谜",
         )
 
         self.back_button = Button(
-            x=35,
-            y=625,
-            width=160,
-            height=50,
+            x=30,
+            y=635,
+            width=130,
+            height=42,
             text="返回首页",
-            font_size=22,
+            font_size=18,
+            outline=True,
         )
 
         self.restart_button = Button(
-            x=705,
-            y=625,
-            width=160,
-            height=50,
-            text="重新开始",
+            x=670,
+            y=37,
+            width=120,
+            height=44,
+            text="重置",
+            font_size=17,
+            outline=True,
+        )
+
+        self.pause_button = Button(
+            x=796,
+            y=37,
+            width=76,
+            height=44,
+            text="暂停",
+            font_size=14,
+            outline=True,
+        )
+
+        self.level_select_button = Button(
+            x=window_width // 2 - 120,
+            y=545,
+            width=240,
+            height=58,
+            text="关卡选择",
             font_size=22,
+            outline=True,
+        )
+
+        self.level_buttons = []
+        for index in range(len(LEVELS)):
+            col = index % 3
+            row = index // 3
+            self.level_buttons.append(
+                Button(
+                    x=170 + col * 190,
+                    y=225 + row * 110,
+                    width=160,
+                    height=72,
+                    text=f"LEVEL {index + 1:02d}",
+                    font_size=20,
+                    outline=True,
+                )
+            )
+
+        self.select_back_button = Button(
+            x=window_width // 2 - 100,
+            y=545,
+            width=200,
+            height=54,
+            text="返回首页",
+            font_size=20,
+            outline=True,
         )
 
         self.retry_button = Button(
@@ -76,13 +131,23 @@ class Game:
             font_size=25,
         )
 
+        self.clear_replay_button = Button(
+            x=285,
+            y=395,
+            width=150,
+            height=58,
+            text="重玩本关",
+            font_size=20,
+            outline=True,
+        )
+
         self.next_button = Button(
-            x=window_width // 2 - 120,
-            y=390,
-            width=240,
-            height=60,
+            x=465,
+            y=395,
+            width=150,
+            height=58,
             text="下一关",
-            font_size=25,
+            font_size=20,
         )
 
         self.all_restart_button = Button(
@@ -120,6 +185,7 @@ class Game:
             # 保存棋盘大小，供 UI 绘制使用
             arrow.board_rows = level["rows"]
             arrow.board_cols = level["cols"]
+            arrow.opacity = 0
 
             self.arrows.append(arrow)
 
@@ -127,6 +193,10 @@ class Game:
         self.feedback_end_time = 0
         self.blocked_arrow = None
         self.pending_game_over = False
+        self.level_start_time = pygame.time.get_ticks()
+        self.mistakes_used = 0
+        self.result_time_seconds = 0
+        self.moves_count = 0
 
     def restart_level(self):
         """重新开始当前关卡。"""
@@ -168,6 +238,7 @@ class Game:
     def handle_arrow_click(self, arrow):
         """处理玩家点击箭头后的结果。"""
         level = LEVELS[self.level_index]
+        self.moves_count += 1
 
         path_clear = is_path_clear(
             arrow=arrow,
@@ -179,6 +250,7 @@ class Game:
         if path_clear:
             arrow.state = "flying"
             arrow.flight_distance = 0
+            arrow.flight_start = pygame.time.get_ticks()
             arrow.offset_x = 0
             arrow.offset_y = 0
 
@@ -190,12 +262,14 @@ class Game:
 
         else:
             arrow.state = "blocked"
+            arrow.collision_start = pygame.time.get_ticks()
             self.blocked_arrow = arrow
 
             self.mistakes_left -= 1
+            self.mistakes_used += 1
             self.feedback_message = "前方有其他箭头阻挡！"
             self.feedback_end_time = (
-                pygame.time.get_ticks() + 800
+                pygame.time.get_ticks() + 300
             )
 
             if self.mistakes_left <= 0:
@@ -235,21 +309,9 @@ class Game:
             if arrow.state != "flying":
                 continue
 
-            arrow.flight_distance += (
-                FLYING_SPEED * delta_time
-            )
-
             row_step, col_step = DIRECTION_VECTORS[
                 arrow.direction
             ]
-
-            arrow.offset_x = (
-                col_step * arrow.flight_distance
-            )
-
-            arrow.offset_y = (
-                row_step * arrow.flight_distance
-            )
 
             target_distance = (
                 self.get_flight_target_distance(
@@ -259,8 +321,18 @@ class Game:
                     actual_cell_size,
                 )
             )
+            arrow.flight_target = target_distance
 
-            if arrow.flight_distance >= target_distance:
+            # 0.42 秒的三次缓出动画，先快后慢地飞离棋盘。
+            elapsed = pygame.time.get_ticks() - arrow.flight_start
+            # 先用 0.05 秒蓄力微缩，再在 0.37 秒内高速弹射。
+            progress = 0.0 if elapsed < 50 else min(1.0, (elapsed - 50) / 370)
+            eased = 1 - (1 - progress) ** 3
+            arrow.flight_distance = target_distance * eased
+            arrow.offset_x = col_step * arrow.flight_distance
+            arrow.offset_y = row_step * arrow.flight_distance
+
+            if progress >= 1.0:
                 finished_arrows.append(arrow)
 
         for arrow in finished_arrows:
@@ -268,6 +340,10 @@ class Game:
 
         if finished_arrows and not self.arrows:
             self.feedback_message = ""
+            self.result_time_seconds = max(
+                1,
+                (pygame.time.get_ticks() - self.level_start_time) // 1000,
+            )
 
             if self.level_index == len(LEVELS) - 1:
                 self.state = ALL_CLEAR
@@ -291,6 +367,9 @@ class Game:
             elif event.key == pygame.K_r and self.state == PLAYING:
                 self.restart_level()
 
+            elif event.key == pygame.K_p and self.state in {PLAYING, PAUSED}:
+                self.state = PLAYING if self.state == PAUSED else PAUSED
+
             return
 
         if event.type != pygame.MOUSEBUTTONDOWN:
@@ -305,6 +384,19 @@ class Game:
             if self.start_button.contains(mouse_position):
                 self.start_new_game()
 
+            elif self.level_select_button.contains(mouse_position):
+                self.state = LEVEL_SELECT
+
+        elif self.state == LEVEL_SELECT:
+            if self.select_back_button.contains(mouse_position):
+                self.state = START
+                return
+            for index, button in enumerate(self.level_buttons):
+                if button.contains(mouse_position):
+                    self.load_level(index)
+                    self.state = PLAYING
+                    return
+
         elif self.state == PLAYING:
             if self.back_button.contains(mouse_position):
                 self.state = START
@@ -312,6 +404,10 @@ class Game:
 
             if self.restart_button.contains(mouse_position):
                 self.restart_level()
+                return
+
+            if self.pause_button.contains(mouse_position):
+                self.state = PAUSED
                 return
 
             if self.is_input_locked():
@@ -340,6 +436,9 @@ class Game:
                 self.load_level(self.level_index + 1)
                 self.state = PLAYING
 
+            elif self.clear_replay_button.contains(mouse_position):
+                self.restart_level()
+
             elif self.home_button.contains(mouse_position):
                 self.state = START
 
@@ -355,6 +454,12 @@ class Game:
                 self.start_new_game()
 
             elif self.home_button.contains(mouse_position):
+                self.state = START
+
+        elif self.state == PAUSED:
+            if self.pause_button.contains(mouse_position):
+                self.state = PLAYING
+            elif self.back_button.contains(mouse_position):
                 self.state = START
 
     def update_feedback(self):
@@ -386,12 +491,25 @@ class Game:
         self.update_flying_arrows(delta_time)
         self.update_feedback()
 
+        # 关卡载入或重置后，箭头平滑淡入。
+        for arrow in self.arrows:
+            if arrow.opacity < 255:
+                arrow.opacity = min(255, arrow.opacity + int(700 * delta_time))
+
     def draw(self):
         """根据当前状态绘制界面。"""
         if self.state == START:
             draw_start_screen(
                 self.screen,
                 self.start_button,
+                self.level_select_button,
+            )
+
+        elif self.state == LEVEL_SELECT:
+            draw_level_select_screen(
+                self.screen,
+                self.level_buttons,
+                self.select_back_button,
             )
 
         elif self.state == PLAYING:
@@ -407,9 +525,17 @@ class Game:
                 restart_button=self.restart_button,
                 feedback_message=self.feedback_message,
                 blocked_arrow=self.blocked_arrow,
+                pause_button=self.pause_button,
             )
 
         elif self.state == LEVEL_CLEAR:
+            level = LEVELS[self.level_index]
+            draw_game_screen(
+                self.screen, level, self.level_index + 1,
+                self.arrows, self.mistakes_left,
+                self.back_button, self.restart_button,
+                "", None, self.pause_button,
+            )
             draw_result_screen(
                 screen=self.screen,
                 title=f"第 {self.level_index + 1} 关通关",
@@ -417,9 +543,18 @@ class Game:
                 title_color=(45, 150, 90),
                 primary_button=self.next_button,
                 home_button=self.home_button,
+                stats_text=f"步数 {self.moves_count}  ·  用时 {self.result_time_seconds} 秒",
+                secondary_button=self.clear_replay_button,
             )
 
         elif self.state == GAME_OVER:
+            level = LEVELS[self.level_index]
+            draw_game_screen(
+                self.screen, level, self.level_index + 1,
+                self.arrows, self.mistakes_left,
+                self.back_button, self.restart_button,
+                "", None, self.pause_button,
+            )
             draw_result_screen(
                 screen=self.screen,
                 title="挑战失败",
@@ -427,16 +562,51 @@ class Game:
                 title_color=(205, 65, 65),
                 primary_button=self.retry_button,
                 home_button=self.home_button,
+                stats_text=f"步数 {self.moves_count}  ·  失误 {self.mistakes_used} 次",
             )
 
         elif self.state == ALL_CLEAR:
+            level = LEVELS[self.level_index]
+            draw_game_screen(
+                self.screen, level, self.level_index + 1,
+                self.arrows, self.mistakes_left,
+                self.back_button, self.restart_button,
+                "", None, self.pause_button,
+            )
             draw_result_screen(
                 screen=self.screen,
                 title="全部通关",
-                message="恭喜你完成了全部三个关卡！",
+                message=f"恭喜你完成了全部 {len(LEVELS)} 个关卡！",
                 title_color=(45, 150, 90),
                 primary_button=self.all_restart_button,
                 home_button=self.home_button,
+                stats_text=f"步数 {self.moves_count}  ·  用时 {self.result_time_seconds} 秒",
+            )
+
+        elif self.state == PAUSED:
+            level = LEVELS[self.level_index]
+            draw_game_screen(
+                screen=self.screen,
+                level=level,
+                level_number=self.level_index + 1,
+                arrows=self.arrows,
+                mistakes_left=self.mistakes_left,
+                back_button=self.back_button,
+                restart_button=self.restart_button,
+                feedback_message="游戏已暂停 · 点击右上角继续",
+                blocked_arrow=None,
+                pause_button=self.pause_button,
+            )
+            shade = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
+            shade.fill((15, 15, 20, 135))
+            self.screen.blit(shade, (0, 0))
+            from ui import BLACK, draw_centered_text, get_font
+            draw_centered_text(
+                self.screen,
+                "游戏已暂停",
+                get_font(48, True),
+                BLACK,
+                (self.screen.get_width() // 2, self.screen.get_height() // 2),
             )
 
         pygame.display.flip()

@@ -23,6 +23,10 @@ class Arrow:
     offset_x: float = 0.0
     offset_y: float = 0.0
     flight_distance: float = 0.0
+    opacity: int = 255
+    collision_start: int = 0
+    flight_start: int = 0
+    flight_target: float = 0.0
 
     def __post_init__(self):
         if self.direction not in VALID_DIRECTIONS:
