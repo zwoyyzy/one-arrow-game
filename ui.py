@@ -237,6 +237,23 @@ def draw_status_bar(
     screen.blit(arrow_text, (350, 55))
     screen.blit(mistake_text, (650, 55))
 
+def get_grid_position(mouse_position, rows, cols):
+    """将鼠标坐标转换为棋盘的行号和列号。"""
+    mouse_x, mouse_y = mouse_position
+
+    board_width = cols * CELL_SIZE
+    board_height = rows * CELL_SIZE
+
+    if not (
+        BOARD_LEFT <= mouse_x < BOARD_LEFT + board_width
+        and BOARD_TOP <= mouse_y < BOARD_TOP + board_height
+    ):
+        return None
+
+    col = (mouse_x - BOARD_LEFT) // CELL_SIZE
+    row = (mouse_y - BOARD_TOP) // CELL_SIZE
+
+    return row, col
 
 def draw_board(screen, rows, cols):
     """绘制游戏棋盘和网格。"""
@@ -325,7 +342,7 @@ def get_arrow_points(center_x, center_y, direction):
     return transformed_points
 
 
-def draw_arrow(screen, arrow):
+def draw_arrow(screen, arrow, blocked=False):
     """在箭头所在的网格中绘制箭头。"""
     center_x = (
         BOARD_LEFT
@@ -345,15 +362,22 @@ def draw_arrow(screen, arrow):
         arrow.direction,
     )
 
+    if blocked:
+        fill_color = (225, 76, 76)
+        border_color = (150, 40, 40)
+    else:
+        fill_color = ARROW_COLOR
+        border_color = ARROW_BORDER_COLOR
+
     pygame.draw.polygon(
         screen,
-        ARROW_COLOR,
+        fill_color,
         points,
     )
 
     pygame.draw.polygon(
         screen,
-        ARROW_BORDER_COLOR,
+        border_color,
         points,
         width=3,
     )
@@ -366,6 +390,8 @@ def draw_game_screen(
     arrows,
     mistakes_left,
     back_button,
+    feedback_message,
+    blocked_arrow,
 ):
     """绘制游戏界面、棋盘和所有箭头。"""
     screen.fill(BACKGROUND_COLOR)
@@ -387,6 +413,7 @@ def draw_game_screen(
         draw_arrow(
             screen,
             arrow,
+            blocked=(arrow is blocked_arrow),
         )
 
     back_button.draw(
@@ -394,12 +421,23 @@ def draw_game_screen(
         pygame.mouse.get_pos(),
     )
 
-    tip_font = get_font(18)
+    tip_font = get_font(19, bold=bool(feedback_message))
+
+    if feedback_message:
+        if blocked_arrow is not None:
+            message_color = (200, 55, 55)
+        else:
+            message_color = (45, 145, 85)
+
+        tip_text = feedback_message
+    else:
+        message_color = TEXT_COLOR
+        tip_text = "点击箭头，检查它前进方向上的路径"
 
     draw_centered_text(
         screen,
-        "当前阶段只绘制棋盘，下一步实现点击与路径判断",
+        tip_text,
         tip_font,
-        TEXT_COLOR,
+        message_color,
         (530, 650),
     )
