@@ -68,6 +68,97 @@ def draw_centered_text(
     screen.blit(surface, rect)
 
 
+def get_star_points(
+    center,
+    outer_radius,
+    inner_ratio=0.45,
+):
+    """计算新粗犷主义五角星的十个顶点。"""
+    center_x, center_y = center
+    points = []
+
+    for index in range(10):
+        angle = math.radians(
+            -90 + index * 36
+        )
+
+        radius = (
+            outer_radius
+            if index % 2 == 0
+            else outer_radius * inner_ratio
+        )
+
+        points.append(
+            (
+                int(
+                    center_x
+                    + math.cos(angle) * radius
+                ),
+                int(
+                    center_y
+                    + math.sin(angle) * radius
+                ),
+            )
+        )
+
+    return points
+
+
+def draw_brutal_star(
+    screen,
+    center,
+    radius,
+    unlocked,
+):
+    """绘制带粗黑轮廓和右下硬阴影的立体星星。"""
+    shadow_points = get_star_points(
+        (
+            center[0] + 4,
+            center[1] + 4,
+        ),
+        radius,
+    )
+
+    star_points = get_star_points(
+        center,
+        radius,
+    )
+
+    pygame.gfxdraw.filled_polygon(
+        screen,
+        shadow_points,
+        BLACK,
+    )
+    pygame.gfxdraw.aapolygon(
+        screen,
+        shadow_points,
+        BLACK,
+    )
+
+    fill_color = (
+        (255, 184, 0)
+        if unlocked
+        else (208, 208, 208)
+    )
+
+    pygame.gfxdraw.filled_polygon(
+        screen,
+        star_points,
+        fill_color,
+    )
+    pygame.gfxdraw.aapolygon(
+        screen,
+        star_points,
+        BLACK,
+    )
+    pygame.draw.polygon(
+        screen,
+        BLACK,
+        star_points,
+        width=3,
+    )
+
+
 def draw_heart(
     screen,
     center,
@@ -319,98 +410,131 @@ class Button:
         )
 
 
-def draw_start_screen(
-    screen,
-    start_button,
-    level_select_button=None,
-    random_button=None,
-):
+def draw_start_screen(screen, start_button, level_select_button=None,
+                      random_button=None, continue_button=None,
+                      save_summary=None):
     """绘制开始界面。"""
     screen.fill(CREAM)
-
     width, height = screen.get_size()
-
-    draw_rotated_card(
-        screen,
-        (610, 180),
-        ACID_YELLOW,
-        "一箭又一箭",
-        -2,
-        (width // 2, 255),
-        62,
-        10,
-    )
-
-    draw_rotated_card(
-        screen,
-        (430, 65),
-        WHITE,
-        "ARROW PUZZLE : NEO-BRUTALISM",
-        2,
-        (width // 2, 139),
-        17,
-        6,
-    )
-
-    badge = pygame.Rect(
-        width // 2 - 180,
-        365,
-        360,
-        58,
-    )
-
-    draw_brutal_card(
-        screen,
-        badge,
-        PURPLE,
-        28,
-        5,
-        3,
-    )
-
-    draw_centered_text(
-        screen,
-        "CLICK · THINK · POP!",
-        get_font(18, True),
-        WHITE,
-        badge.center,
-    )
-
     mouse = pygame.mouse.get_pos()
 
-    start_button.draw(
-        screen,
-        mouse,
-    )
+    draw_rotated_card(screen, (610, 180), ACID_YELLOW, "一箭又一箭",
+                      -2, (width // 2, 255), 62, 10)
+    draw_rotated_card(screen, (430, 65), WHITE,
+                      "ARROW PUZZLE : NEO-BRUTALISM", 2,
+                      (width // 2, 139), 17, 6)
+    badge = pygame.Rect(width // 2 - 180, 365, 360, 58)
+    draw_brutal_card(screen, badge, PURPLE, 28, 5, 3)
+    draw_centered_text(screen, "CLICK · THINK · POP !", get_font(18, True),
+                       WHITE, badge.center)
 
+    if continue_button:
+        hovered = save_summary is not None and continue_button.contains(mouse)
+        rect = continue_button.rect.move(-3, -3) if hovered else continue_button.rect
+        draw_brutal_card(screen, rect, CYAN if save_summary else PALE,
+                         8, 9 if hovered else 6, 3)
+        title = save_summary["title"] if save_summary else "继续关卡 · 暂无存档"
+        detail = (save_summary["detail"] if save_summary
+                  else "开始一局游戏后将自动保存进度")
+        color = BLACK if save_summary else DISABLED
+        draw_centered_text(screen, title, get_font(22, True), color,
+                           (rect.centerx, rect.centery - 14))
+        draw_centered_text(screen, detail, get_font(14, True), color,
+                           (rect.centerx, rect.centery + 18))
+
+    start_button.draw(screen, mouse)
     if level_select_button:
-        level_select_button.draw(
-            screen,
-            mouse,
-        )
-
+        level_select_button.draw(screen, mouse)
     if random_button:
-        random_button.draw(
-            screen,
-            mouse,
-        )
+        random_button.draw(screen, mouse)
+    draw_centered_text(screen, "PURE PYGAME · ZERO EXTERNAL ASSETS",
+                       get_font(14, True), BLACK, (width // 2, height - 25))
+
+
+def draw_sound_settings_overlay(
+    screen,
+    audio,
+    bgm_button,
+    fly_button,
+    close_button,
+):
+    """绘制背景音乐和箭头飞出音效设置弹窗。"""
+    overlay = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+    overlay.fill((18, 18, 18, 165))
+    screen.blit(overlay, (0, 0))
+
+    width, height = screen.get_size()
+    modal = pygame.Rect(width // 2 - 270, 145, 540, 390)
+    draw_brutal_card(screen, modal, WHITE, 12, 10, 4)
+
+    title = pygame.Rect(width // 2 - 190, 175, 380, 62)
+    draw_brutal_card(screen, title, ACID_YELLOW, 8, 6, 3)
+    draw_centered_text(screen, "声音设置", get_font(28, True), BLACK, title.center)
+
+    mouse = pygame.mouse.get_pos()
+    for button in (bgm_button, fly_button, close_button):
+        button.draw(screen, mouse)
 
     draw_centered_text(
         screen,
-        "PURE PYGAME · ZERO EXTERNAL ASSETS",
+        "可分别关闭背景音乐或箭头飞出音效",
         get_font(14, True),
         BLACK,
-        (
-            width // 2,
-            height - 25,
-        ),
+        (width // 2, 555),
     )
+
+
+def draw_level_icon(screen, level_index, center, muted=False):
+    """在统一的 40x40 安全区域内绘制关卡图标。"""
+    ink = (75, 75, 75) if muted else BLACK
+    accent = (135, 135, 135) if muted else {
+        0: (188, 126, 66),
+        1: (91, 151, 127),
+        2: (154, 94, 55),
+        3: (116, 82, 54),
+        4: (224, 166, 42),
+    }.get(level_index, CYAN)
+    x, y = center
+
+    if level_index == 0:
+        pygame.draw.line(screen, ink, (x - 15, y), (x + 10, y), 4)
+        pygame.draw.polygon(screen, accent, [(x + 5, y - 8), (x + 18, y), (x + 5, y + 8)])
+        pygame.draw.polygon(screen, ink, [(x + 5, y - 8), (x + 18, y), (x + 5, y + 8)], 2)
+        pygame.draw.polygon(screen, accent, [(x - 16, y), (x - 23, y - 5), (x - 13, y - 4), (x - 13, y + 4), (x - 23, y + 5)])
+        pygame.draw.polygon(screen, ink, [(x - 16, y), (x - 23, y - 5), (x - 13, y - 4), (x - 13, y + 4), (x - 23, y + 5)], 2)
+    elif level_index == 1:
+        for offset, color in ((-5, (194, 102, 86)), (0, accent), (5, (73, 131, 169))):
+            pygame.draw.line(screen, ink, (x - 16, y + offset), (x + 7, y + offset), 2)
+            pygame.draw.polygon(screen, color, [(x + 5, y + offset - 4), (x + 16, y + offset), (x + 5, y + offset + 4)])
+            pygame.draw.polygon(screen, ink, [(x + 5, y + offset - 4), (x + 16, y + offset), (x + 5, y + offset + 4)], 1)
+    elif level_index == 2:
+        body = pygame.Rect(x - 8, y - 7, 16, 22)
+        pygame.draw.polygon(screen, accent, [(body.left, body.top), (body.right, body.top), (body.right - 3, body.bottom), (body.left + 3, body.bottom)])
+        pygame.draw.polygon(screen, ink, [(body.left, body.top), (body.right, body.top), (body.right - 3, body.bottom), (body.left + 3, body.bottom)], 2)
+        for arrow_x in (x - 5, x, x + 5):
+            pygame.draw.line(screen, ink, (arrow_x, y - 6), (arrow_x, y - 16), 2)
+            pygame.draw.polygon(screen, accent, [(arrow_x, y - 18), (arrow_x - 3, y - 13), (arrow_x + 3, y - 13)])
+    elif level_index == 3:
+        bow_rect = pygame.Rect(x - 15, y - 16, 24, 32)
+        pygame.draw.arc(screen, accent, bow_rect, -math.pi / 2, math.pi / 2, 4)
+        pygame.draw.arc(screen, ink, bow_rect, -math.pi / 2, math.pi / 2, 2)
+        pygame.draw.line(screen, ink, (x - 7, y - 15), (x - 7, y + 15), 1)
+        pygame.draw.line(screen, ink, (x - 7, y), (x + 16, y), 2)
+        pygame.draw.polygon(screen, accent, [(x + 17, y), (x + 10, y - 4), (x + 10, y + 4)])
+    else:
+        for radius, color in ((15, accent), (10, WHITE), (5, CORAL)):
+            pygame.draw.circle(screen, color, (x, y), radius)
+            pygame.draw.circle(screen, ink, (x, y), radius, width=2)
+        pygame.draw.line(screen, ink, (x - 18, y + 17), (x + 13, y - 14), 2)
+        pygame.draw.polygon(screen, accent, [(x + 16, y - 17), (x + 9, y - 16), (x + 16, y - 10)])
 
 
 def draw_level_select_screen(
     screen,
     level_buttons,
     back_button,
+    level_progress,
+    feedback_message="",
 ):
     """绘制关卡选择界面。"""
     screen.fill(CREAM)
@@ -443,10 +567,105 @@ def draw_level_select_screen(
 
     mouse = pygame.mouse.get_pos()
 
-    for button in level_buttons:
-        button.draw(
+    for index, button in enumerate(level_buttons):
+        record = level_progress[index]
+        # 第一关默认点亮；通关上一关后，当前待挑战关卡点亮。
+        unlocked = index == 0 or level_progress[index - 1]["completed"]
+        hovered = unlocked and button.contains(mouse)
+        rect = button.rect.move(-3, -3) if hovered else button.rect
+
+        draw_brutal_card(
             screen,
-            mouse,
+            rect,
+            WHITE if unlocked else (105, 105, 105),
+            8,
+            9 if hovered else 6,
+            3,
+        )
+
+        icon_badge = pygame.Rect(
+            rect.left + 9,
+            rect.top + 9,
+            42,
+            42,
+        )
+        draw_brutal_card(
+            screen,
+            icon_badge,
+            PALE if unlocked else (125, 125, 125),
+            6,
+            3,
+            2,
+        )
+
+        draw_centered_text(
+            screen,
+            f"LEVEL {index + 1:02d}",
+            get_font(19, True),
+            BLACK if unlocked else (45, 45, 45),
+            (rect.left + 106, rect.y + 30),
+        )
+
+        draw_level_icon(
+            screen,
+            index,
+            icon_badge.center,
+            muted=not unlocked,
+        )
+
+        if unlocked:
+            for star_index in range(3):
+                draw_brutal_star(
+                    screen,
+                    (
+                        rect.centerx - 32 + star_index * 32,
+                        rect.y + 73,
+                    ),
+                    11,
+                    unlocked=star_index < record["stars"],
+                )
+
+            best_time = record["best_time"]
+            draw_centered_text(
+                screen,
+                (
+                    f"最佳 {best_time} 秒"
+                    if best_time is not None
+                    else "尚未通关"
+                ),
+                get_font(14, True),
+                BLACK,
+                (rect.centerx, rect.y + 104),
+            )
+        else:
+            lock_body = pygame.Rect(rect.centerx - 15, rect.y + 57, 30, 25)
+            pygame.draw.arc(
+                screen,
+                BLACK,
+                pygame.Rect(rect.centerx - 12, rect.y + 39, 24, 30),
+                math.pi,
+                math.pi * 2,
+                width=5,
+            )
+            pygame.draw.rect(screen, BLACK, lock_body, border_radius=3)
+            pygame.draw.circle(screen, (105, 105, 105), (rect.centerx, rect.y + 68), 3)
+            draw_centered_text(
+                screen,
+                "锁定",
+                get_font(14, True),
+                BLACK,
+                (rect.centerx, rect.y + 101),
+            )
+
+    if feedback_message:
+        notice = pygame.Rect(width // 2 - 150, 515, 300, 42)
+        draw_brutal_card(screen, notice, CORAL, 8, 5, 3)
+        draw_centered_text(
+            screen,
+            feedback_message,
+            get_font(16, True),
+            WHITE,
+            notice.center,
         )
 
     back_button.draw(
@@ -553,6 +772,7 @@ def draw_header(
     restart_button,
     pause_button=None,
     shake=False,
+    timer_seconds=0,
 ):
     """绘制顶部状态栏。"""
     width, _ = screen.get_size()
@@ -600,7 +820,7 @@ def draw_header(
     remain_card = pygame.Rect(
         level_card.right + 18,
         header.y + 14,
-        190,
+        205,
         58,
     )
 
@@ -613,18 +833,38 @@ def draw_header(
         3,
     )
 
+    minutes = timer_seconds // 60
+    seconds = timer_seconds % 60
+    separator_x = remain_card.x + 91
+
+    pygame.draw.line(
+        screen,
+        BLACK,
+        (separator_x, remain_card.y + 10),
+        (separator_x, remain_card.bottom - 10),
+        width=2,
+    )
+
     draw_centered_text(
         screen,
-        f"剩余: {remaining_arrows}",
-        get_font(18, True),
+        f"剩余 {remaining_arrows}",
+        get_font(14, True),
         BLACK,
-        remain_card.center,
+        (remain_card.x + 45, remain_card.centery),
+    )
+
+    draw_centered_text(
+        screen,
+        f"计时 {minutes:02d}:{seconds:02d}",
+        get_font(13, True),
+        BLACK,
+        (remain_card.x + 148, remain_card.centery),
     )
 
     life_card = pygame.Rect(
         remain_card.right + 18,
         header.y + 14,
-        180,
+        165,
         58,
     )
 
@@ -653,7 +893,7 @@ def draw_header(
         get_font(14, True),
         BLACK,
         (
-            life_card.x + 45,
+            life_card.x + 41,
             life_card.centery,
         ),
     )
@@ -668,7 +908,7 @@ def draw_header(
 
     base_x = (
         life_card.x
-        + 99
+        + 86
         + shake_x
     )
 
@@ -1119,40 +1359,6 @@ def draw_arrow(
         (0, 0),
     )
 
-    if blocked:
-        bubble = pygame.Rect(
-            0,
-            0,
-            112,
-            34,
-        )
-
-        bubble.centerx = tile.centerx
-
-        # 顶部空间不足时，把气泡放在箭头下方。
-        if tile.top >= 165:
-            bubble.bottom = tile.top - 7
-        else:
-            bubble.top = tile.bottom + 7
-
-        draw_brutal_card(
-            screen,
-            bubble,
-            WHITE,
-            6,
-            4,
-            3,
-        )
-
-        draw_centered_text(
-            screen,
-            "前方阻挡",
-            get_font(15, True),
-            CORAL,
-            bubble.center,
-        )
-
-
 def draw_game_screen(
     screen,
     level,
@@ -1168,6 +1374,7 @@ def draw_game_screen(
     auto_solve_button=None,
     hinted_arrow=None,
     mode_text="主线关卡",
+    timer_seconds=0,
 ):
     """绘制游戏主界面。"""
     screen.fill(CREAM)
@@ -1181,14 +1388,37 @@ def draw_game_screen(
         restart_button,
         pause_button,
         blocked_arrow is not None,
+        timer_seconds,
+    )
+
+        # 计算棋盘外框顶部位置
+    _, grid_top, _ = get_board_geometry(
+        screen,
+        level["rows"],
+        level["cols"],
+    )
+
+    header_bottom = 116
+    board_top = grid_top - BOARD_PADDING
+
+    # 在顶部状态栏和棋盘之间垂直居中
+    mode_y = (
+        header_bottom
+        + (
+            board_top
+            - header_bottom
+        ) // 2
     )
 
     draw_centered_text(
         screen,
         mode_text,
-        get_font(13, True),
+        get_font(18, True),
         PURPLE,
-        (screen.get_width() // 2, 128),
+        (
+            screen.get_width() // 2,
+            mode_y,
+        ),
     )
 
     draw_board(
@@ -1295,6 +1525,8 @@ def draw_result_screen(
     home_button,
     stats_text="",
     secondary_button=None,
+    star_count=0,
+    reference_time=0,
 ):
     """绘制通关或失败弹窗。"""
     overlay = pygame.Surface(
@@ -1325,9 +1557,9 @@ def draw_result_screen(
 
     modal = pygame.Rect(
         width // 2 - 275,
-        145,
+        118 if star_count else 145,
         550,
-        395,
+        475 if star_count else 395,
     )
 
     modal_color = (
@@ -1358,7 +1590,7 @@ def draw_result_screen(
         BLACK,
         (
             width // 2,
-            220,
+            180 if star_count else 220,
         ),
     )
 
@@ -1369,16 +1601,53 @@ def draw_result_screen(
         BLACK,
         (
             width // 2,
-            285,
+            230 if star_count else 285,
         ),
     )
 
+    if star_count:
+        star_card = pygame.Rect(
+            width // 2 - 175,
+            260,
+            350,
+            100,
+        )
+
+        draw_brutal_card(
+            screen,
+            star_card,
+            WHITE,
+            10,
+            6,
+            3,
+        )
+
+        star_centers = (
+            (width // 2 - 78, 312),
+            (width // 2, 301),
+            (width // 2 + 78, 312),
+        )
+
+        star_radii = (
+            27,
+            33,
+            27,
+        )
+
+        for index in range(3):
+            draw_brutal_star(
+                screen,
+                star_centers[index],
+                star_radii[index],
+                unlocked=index < star_count,
+            )
+
     if stats_text:
         stats = pygame.Rect(
-            width // 2 - 180,
-            315,
-            360,
-            46,
+            width // 2 - 195,
+            380 if star_count else 315,
+            390,
+            44 if star_count else 46,
         )
 
         draw_brutal_card(
@@ -1392,13 +1661,69 @@ def draw_result_screen(
 
         draw_centered_text(
             screen,
-            stats_text,
-            get_font(16, True),
+            (
+                f"{stats_text}  ·  AI参考 {reference_time} 秒"
+                if star_count and reference_time
+                else stats_text
+            ),
+            get_font(14 if star_count else 16, True),
             BLACK,
             stats.center,
         )
 
     mouse = pygame.mouse.get_pos()
+
+    # 星级弹窗重新排列按钮，增加阴影之间的实际空隙。
+    if star_count:
+        if secondary_button:
+            secondary_button.rect.size = (140, 50)
+            secondary_button.rect.topleft = (
+                width // 2 - 160,
+                442,
+            )
+
+            primary_button.rect.size = (140, 50)
+            primary_button.rect.topleft = (
+                width // 2 + 20,
+                442,
+            )
+        else:
+            primary_button.rect.size = (210, 50)
+            primary_button.rect.midtop = (
+                width // 2,
+                442,
+            )
+
+        home_button.rect.size = (210, 50)
+        home_button.rect.midtop = (
+            width // 2,
+            516,
+        )
+    else:
+        if secondary_button:
+            secondary_button.rect.size = (150, 58)
+            secondary_button.rect.topleft = (
+                width // 2 - 165,
+                395,
+            )
+
+            primary_button.rect.size = (150, 58)
+            primary_button.rect.topleft = (
+                width // 2 + 15,
+                395,
+            )
+        else:
+            primary_button.rect.size = (240, 60)
+            primary_button.rect.midtop = (
+                width // 2,
+                390,
+            )
+
+        home_button.rect.size = (240, 60)
+        home_button.rect.midtop = (
+            width // 2,
+            480,
+        )
 
     primary_button.draw(
         screen,
