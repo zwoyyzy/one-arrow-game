@@ -13,11 +13,16 @@ DIRECTION_VECTORS = {
 
 @dataclass
 class Arrow:
-    """保存一个箭头的位置和方向。"""
+    """保存箭头的位置、方向和动画状态。"""
 
     row: int
     col: int
     direction: str
+
+    state: str = "idle"
+    offset_x: float = 0.0
+    offset_y: float = 0.0
+    flight_distance: float = 0.0
 
     def __post_init__(self):
         if self.direction not in VALID_DIRECTIONS:
@@ -31,10 +36,12 @@ def is_path_clear(arrow, arrows, rows, cols):
     check_row = arrow.row + row_step
     check_col = arrow.col + col_step
 
+    # 正在飞出的箭头不再阻挡其他箭头
     occupied_positions = {
         (other_arrow.row, other_arrow.col)
         for other_arrow in arrows
         if other_arrow is not arrow
+        and other_arrow.state != "flying"
     }
 
     while 0 <= check_row < rows and 0 <= check_col < cols:

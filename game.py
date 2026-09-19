@@ -1,10 +1,12 @@
 import pygame
 
-from arrow import Arrow, is_path_clear
+from arrow import Arrow, DIRECTION_VECTORS, is_path_clear
 from levels import LEVELS
 from ui import (
+    CELL_SIZE,
     Button,
     draw_game_screen,
+    draw_result_screen,
     draw_start_screen,
     get_grid_position,
 )
@@ -12,10 +14,14 @@ from ui import (
 
 START = "start"
 PLAYING = "playing"
+LEVEL_CLEAR = "level_clear"
+GAME_OVER = "game_over"
+
+FLYING_SPEED = 700
 
 
 class Game:
-    """管理游戏状态、事件和界面绘制。"""
+    """管理游戏状态、鼠标事件、动画和关卡流程。"""
 
     def __init__(self, screen):
         self.screen = screen
@@ -30,6 +36,7 @@ class Game:
         self.feedback_message = ""
         self.feedback_end_time = 0
         self.blocked_arrow = None
+        self.pending_game_over = False
 
         window_width, _ = self.screen.get_size()
 
@@ -50,10 +57,37 @@ class Game:
             font_size=22,
         )
 
+        self.restart_button = Button(
+            x=705,
+            y=625,
+            width=160,
+            height=50,
+            text="重新开始",
+            font_size=22,
+        )
+
+        self.retry_button = Button(
+            x=window_width // 2 - 120,
+            y=390,
+            width=240,
+            height=60,
+            text="重新挑战",
+            font_size=25,
+        )
+
+        self.home_button = Button(
+            x=window_width // 2 - 120,
+            y=480,
+            width=240,
+            height=60,
+            text="返回首页",
+            font_size=25,
+        )
+
         self.load_level(0)
 
     def load_level(self, level_index):
-        """根据初始数据重新创建当前关卡。"""
+        """根据初始数据重新创建指定关卡。"""
         level = LEVELS[level_index]
 
         self.level_index = level_index
@@ -67,17 +101,34 @@ class Game:
         self.feedback_message = ""
         self.feedback_end_time = 0
         self.blocked_arrow = None
+        self.pending_game_over = False
+
+    def restart_level(self):
+        """重新开始当前关卡。"""
+        self.load_level(self.level_index)
+        self.state = PLAYING
 
     def find_arrow(self, row, col):
-        """查找指定格子中的箭头。"""
+        """查找指定格子中可以点击的箭头。"""
         for arrow in self.arrows:
-            if arrow.row == row and arrow.col == col:
+            if (
+                arrow.row == row
+                and arrow.col == col
+                and arrow.state == "idle"
+            ):
                 return arrow
 
         return None
 
+    def is_input_locked(self):
+        """播放动画或反馈时，暂时禁止再次点击箭头。"""
+        if any(arrow.state == "flying" for arrow in self.arrows):
+            return True
+
+        return self.blocked_arrow is not None
+
     def handle_arrow_click(self, arrow):
-        """处理玩家点击箭头后的结果。"""
+        """处理箭头点击结果。"""
         level = LEVELS[self.level_index]
 
         path_clear = is_path_clear(
@@ -88,29 +139,84 @@ class Game:
         )
 
         if path_clear:
-            self.arrows.remove(arrow)
-            self.blocked_arrow = None
-            self.feedback_message = "路径畅通，箭头成功飞出！"
-        else:
-            self.mistakes_left -= 1
-            self.blocked_arrow = arrow
-            self.feedback_message = "前方有其他箭头阻挡！"
+            arrow.state = "flying"
+            arrow.flight_distance = 0
+            arrow.offset_x = 0
+            arrow.offset_y = 0
 
-        # 反馈显示 800 毫秒
-        self.feedback_end_time = pygame.time.get_ticks() + 800
+            self.blocked_arrow = None
+            self.feedback_message = "路径畅通，箭头正在飞出！"
+            self.feedback_end_time = pygame.time.get_ticks() + 700
+
+        else:
+            arrow.state = "blocked"
+            self.blocked_arrow = arrow
+
+            self.mistakes_left -= 1
+            self.feedback_message = "前方有其他箭头阻挡！"
+            self.feedback_end_time = pygame.time.get_ticks() + 800
+
+            if self.mistakes_left <= 0:
+                self.pending_game_over = True
+
+    def get_flight_target_distance(self, arrow, rows, cols):
+        """计算箭头完全飞出棋盘需要移动的距离。"""
+        if arrow.direction == "up":
+            return (arrow.row + 1) * CELL_SIZE
+
+        if arrow.direction == "down":
+            return (rows - arrow.row) * CELL_SIZE
+
+        if arrow.direction == "left":
+            return (arrow.col + 1) * CELL_SIZE
+
+        return (cols - arrow.col) * CELL_SIZE
+
+    def update_flying_arrows(self, delta_time):
+        """更新箭头飞出动画。"""
+        level = LEVELS[self.level_index]
+        finished_arrows = []
+
+        for arrow in self.arrows:
+            if arrow.state != "flying":
+                continue
+
+            arrow.flight_distance += FLYING_SPEED * delta_time
+
+            row_step, col_step = DIRECTION_VECTORS[arrow.direction]
+
+            arrow.offset_x = col_step * arrow.flight_distance
+            arrow.offset_y = row_step * arrow.flight_distance
+
+            target_distance = self.get_flight_target_distance(
+                arrow,
+                level["rows"],
+                level["cols"],
+            )
+
+            if arrow.flight_distance >= target_distance:
+                finished_arrows.append(arrow)
+
+        for arrow in finished_arrows:
+            self.arrows.remove(arrow)
+
+        if finished_arrows and not self.arrows:
+            self.feedback_message = ""
+            self.state = LEVEL_CLEAR
 
     def handle_event(self, event):
-        """处理键盘和鼠标事件。"""
+        """处理关闭、键盘和鼠标事件。"""
         if event.type == pygame.QUIT:
             self.running = False
             return
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                if self.state == PLAYING:
-                    self.state = START
-                else:
+                if self.state == START:
                     self.running = False
+                else:
+                    self.state = START
+            return
 
         if event.type != pygame.MOUSEBUTTONDOWN:
             return
@@ -130,6 +236,13 @@ class Game:
                 self.state = START
                 return
 
+            if self.restart_button.contains(mouse_position):
+                self.restart_level()
+                return
+
+            if self.is_input_locked():
+                return
+
             level = LEVELS[self.level_index]
 
             grid_position = get_grid_position(
@@ -138,7 +251,6 @@ class Game:
                 level["cols"],
             )
 
-            # 点击棋盘外或空格时不进行处理
             if grid_position is None:
                 return
 
@@ -148,17 +260,41 @@ class Game:
             if arrow is not None:
                 self.handle_arrow_click(arrow)
 
-    def update(self):
-        """更新反馈信息的显示时间。"""
+        elif self.state in {GAME_OVER, LEVEL_CLEAR}:
+            if self.retry_button.contains(mouse_position):
+                self.restart_level()
+
+            elif self.home_button.contains(mouse_position):
+                self.state = START
+
+    def update_feedback(self):
+        """更新碰撞提示和失败判断。"""
+        if self.feedback_end_time == 0:
+            return
+
         current_time = pygame.time.get_ticks()
 
-        if (
-            self.feedback_end_time > 0
-            and current_time >= self.feedback_end_time
-        ):
-            self.feedback_message = ""
-            self.feedback_end_time = 0
+        if current_time < self.feedback_end_time:
+            return
+
+        self.feedback_message = ""
+        self.feedback_end_time = 0
+
+        if self.blocked_arrow is not None:
+            self.blocked_arrow.state = "idle"
             self.blocked_arrow = None
+
+        if self.pending_game_over:
+            self.pending_game_over = False
+            self.state = GAME_OVER
+
+    def update(self, delta_time):
+        """更新游戏动画和反馈状态。"""
+        if self.state != PLAYING:
+            return
+
+        self.update_flying_arrows(delta_time)
+        self.update_feedback()
 
     def draw(self):
         """根据当前状态绘制对应界面。"""
@@ -178,8 +314,29 @@ class Game:
                 arrows=self.arrows,
                 mistakes_left=self.mistakes_left,
                 back_button=self.back_button,
+                restart_button=self.restart_button,
                 feedback_message=self.feedback_message,
                 blocked_arrow=self.blocked_arrow,
+            )
+
+        elif self.state == GAME_OVER:
+            draw_result_screen(
+                screen=self.screen,
+                title="挑战失败",
+                message="失误机会已经用完，请重新尝试本关。",
+                title_color=(205, 65, 65),
+                primary_button=self.retry_button,
+                home_button=self.home_button,
+            )
+
+        elif self.state == LEVEL_CLEAR:
+            draw_result_screen(
+                screen=self.screen,
+                title="本关通关",
+                message="你已经成功清除了本关所有箭头！",
+                title_color=(45, 150, 90),
+                primary_button=self.retry_button,
+                home_button=self.home_button,
             )
 
         pygame.display.flip()
@@ -187,9 +344,10 @@ class Game:
     def run(self):
         """运行游戏主循环。"""
         while self.running:
+            delta_time = self.clock.tick(60) / 1000
+
             for event in pygame.event.get():
                 self.handle_event(event)
 
-            self.update()
+            self.update(delta_time)
             self.draw()
-            self.clock.tick(60)

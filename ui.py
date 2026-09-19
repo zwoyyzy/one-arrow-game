@@ -1,9 +1,9 @@
+import math
 from pathlib import Path
 
 import pygame
 
 
-# 界面颜色
 BACKGROUND_COLOR = (242, 247, 255)
 TITLE_COLOR = (45, 65, 105)
 TEXT_COLOR = (75, 85, 105)
@@ -19,15 +19,16 @@ GRID_COLOR = (194, 207, 230)
 ARROW_COLOR = (69, 105, 180)
 ARROW_BORDER_COLOR = (40, 66, 125)
 
+BLOCKED_ARROW_COLOR = (225, 76, 76)
+BLOCKED_BORDER_COLOR = (150, 40, 40)
 
-# 棋盘位置和格子大小
 BOARD_LEFT = 225
 BOARD_TOP = 135
 CELL_SIZE = 90
 
 
 def get_font(size, bold=False):
-    """读取 Windows 中文字体，避免 Pygame 扫描字体时报错。"""
+    """读取 Windows 中文字体。"""
     fonts_directory = Path(r"C:\Windows\Fonts")
 
     if bold:
@@ -52,7 +53,6 @@ def get_font(size, bold=False):
 
             return font
 
-    # 找不到中文字体时使用 Pygame 默认字体
     font = pygame.font.Font(None, size)
     font.set_bold(bold)
     return font
@@ -66,7 +66,7 @@ def draw_centered_text(screen, text, font, color, center):
 
 
 class Button:
-    """通用按钮类。"""
+    """通用按钮。"""
 
     def __init__(
         self,
@@ -86,7 +86,7 @@ class Button:
         return self.rect.collidepoint(mouse_position)
 
     def draw(self, screen, mouse_position):
-        """绘制按钮，并在鼠标悬停时改变颜色。"""
+        """绘制按钮。"""
         if self.contains(mouse_position):
             color = BUTTON_HOVER_COLOR
         else:
@@ -117,7 +117,7 @@ class Button:
 
 
 def draw_start_screen(screen, start_button):
-    """绘制游戏开始界面。"""
+    """绘制开始界面。"""
     screen.fill(BACKGROUND_COLOR)
 
     window_width, _ = screen.get_size()
@@ -127,7 +127,6 @@ def draw_start_screen(screen, start_button):
     rule_font = get_font(21)
     tip_font = get_font(17)
 
-    # 游戏标题
     draw_centered_text(
         screen,
         "一箭又一箭",
@@ -136,7 +135,6 @@ def draw_start_screen(screen, start_button):
         (window_width // 2, 150),
     )
 
-    # 副标题
     draw_centered_text(
         screen,
         "观察箭头方向，按照正确顺序清空棋盘",
@@ -145,7 +143,6 @@ def draw_start_screen(screen, start_button):
         (window_width // 2, 220),
     )
 
-    # 玩法说明面板
     panel_rect = pygame.Rect(
         window_width // 2 - 280,
         275,
@@ -190,13 +187,11 @@ def draw_start_screen(screen, start_button):
             ),
         )
 
-    # 开始游戏按钮
     start_button.draw(
         screen,
         pygame.mouse.get_pos(),
     )
 
-    # 底部操作提示
     draw_centered_text(
         screen,
         "使用鼠标进行操作",
@@ -206,13 +201,34 @@ def draw_start_screen(screen, start_button):
     )
 
 
+def get_grid_position(mouse_position, rows, cols):
+    """将鼠标坐标转换为棋盘行列坐标。"""
+    mouse_x, mouse_y = mouse_position
+
+    board_width = cols * CELL_SIZE
+    board_height = rows * CELL_SIZE
+
+    inside_board = (
+        BOARD_LEFT <= mouse_x < BOARD_LEFT + board_width
+        and BOARD_TOP <= mouse_y < BOARD_TOP + board_height
+    )
+
+    if not inside_board:
+        return None
+
+    col = (mouse_x - BOARD_LEFT) // CELL_SIZE
+    row = (mouse_y - BOARD_TOP) // CELL_SIZE
+
+    return row, col
+
+
 def draw_status_bar(
     screen,
     level_number,
     remaining_arrows,
     mistakes_left,
 ):
-    """绘制游戏顶部的状态栏。"""
+    """绘制顶部状态栏。"""
     label_font = get_font(23, bold=True)
 
     level_text = label_font.render(
@@ -227,36 +243,25 @@ def draw_status_bar(
         TITLE_COLOR,
     )
 
+    mistake_color = (
+        (205, 65, 65)
+        if mistakes_left <= 1
+        else TITLE_COLOR
+    )
+
     mistake_text = label_font.render(
         f"剩余失误：{mistakes_left}",
         True,
-        TITLE_COLOR,
+        mistake_color,
     )
 
     screen.blit(level_text, (55, 55))
     screen.blit(arrow_text, (350, 55))
     screen.blit(mistake_text, (650, 55))
 
-def get_grid_position(mouse_position, rows, cols):
-    """将鼠标坐标转换为棋盘的行号和列号。"""
-    mouse_x, mouse_y = mouse_position
-
-    board_width = cols * CELL_SIZE
-    board_height = rows * CELL_SIZE
-
-    if not (
-        BOARD_LEFT <= mouse_x < BOARD_LEFT + board_width
-        and BOARD_TOP <= mouse_y < BOARD_TOP + board_height
-    ):
-        return None
-
-    col = (mouse_x - BOARD_LEFT) // CELL_SIZE
-    row = (mouse_y - BOARD_TOP) // CELL_SIZE
-
-    return row, col
 
 def draw_board(screen, rows, cols):
-    """绘制游戏棋盘和网格。"""
+    """绘制棋盘。"""
     board_width = cols * CELL_SIZE
     board_height = rows * CELL_SIZE
 
@@ -300,8 +305,7 @@ def draw_board(screen, rows, cols):
 
 
 def get_arrow_points(center_x, center_y, direction):
-    """根据方向计算箭头多边形的顶点。"""
-    # 先定义一个朝右的箭头
+    """根据方向计算箭头多边形顶点。"""
     points = [
         (-28, -12),
         (4, -12),
@@ -343,31 +347,43 @@ def get_arrow_points(center_x, center_y, direction):
 
 
 def draw_arrow(screen, arrow, blocked=False):
-    """在箭头所在的网格中绘制箭头。"""
+    """绘制箭头、飞行动画和碰撞晃动。"""
     center_x = (
         BOARD_LEFT
         + arrow.col * CELL_SIZE
         + CELL_SIZE // 2
+        + arrow.offset_x
     )
 
     center_y = (
         BOARD_TOP
         + arrow.row * CELL_SIZE
         + CELL_SIZE // 2
+        + arrow.offset_y
     )
+
+    if blocked:
+        shake = int(
+            math.sin(pygame.time.get_ticks() * 0.045) * 7
+        )
+
+        if arrow.direction in {"left", "right"}:
+            center_x += shake
+        else:
+            center_y += shake
+
+        fill_color = BLOCKED_ARROW_COLOR
+        border_color = BLOCKED_BORDER_COLOR
+
+    else:
+        fill_color = ARROW_COLOR
+        border_color = ARROW_BORDER_COLOR
 
     points = get_arrow_points(
         center_x,
         center_y,
         arrow.direction,
     )
-
-    if blocked:
-        fill_color = (225, 76, 76)
-        border_color = (150, 40, 40)
-    else:
-        fill_color = ARROW_COLOR
-        border_color = ARROW_BORDER_COLOR
 
     pygame.draw.polygon(
         screen,
@@ -390,10 +406,11 @@ def draw_game_screen(
     arrows,
     mistakes_left,
     back_button,
+    restart_button,
     feedback_message,
     blocked_arrow,
 ):
-    """绘制游戏界面、棋盘和所有箭头。"""
+    """绘制游戏界面。"""
     screen.fill(BACKGROUND_COLOR)
 
     draw_status_bar(
@@ -416,28 +433,79 @@ def draw_game_screen(
             blocked=(arrow is blocked_arrow),
         )
 
-    back_button.draw(
-        screen,
-        pygame.mouse.get_pos(),
-    )
-
-    tip_font = get_font(19, bold=bool(feedback_message))
-
     if feedback_message:
         if blocked_arrow is not None:
             message_color = (200, 55, 55)
         else:
             message_color = (45, 145, 85)
 
-        tip_text = feedback_message
+        message = feedback_message
     else:
         message_color = TEXT_COLOR
-        tip_text = "点击箭头，检查它前进方向上的路径"
+        message = "点击箭头，检查它前进方向上的路径"
+
+    message_font = get_font(
+        18,
+        bold=bool(feedback_message),
+    )
 
     draw_centered_text(
         screen,
-        tip_text,
-        tip_font,
+        message,
+        message_font,
         message_color,
-        (530, 650),
+        (450, 608),
+    )
+
+    back_button.draw(
+        screen,
+        pygame.mouse.get_pos(),
+    )
+
+    restart_button.draw(
+        screen,
+        pygame.mouse.get_pos(),
+    )
+
+
+def draw_result_screen(
+    screen,
+    title,
+    message,
+    title_color,
+    primary_button,
+    home_button,
+):
+    """绘制通关或失败结果界面。"""
+    screen.fill(BACKGROUND_COLOR)
+
+    window_width, _ = screen.get_size()
+
+    title_font = get_font(55, bold=True)
+    message_font = get_font(23)
+
+    draw_centered_text(
+        screen,
+        title,
+        title_font,
+        title_color,
+        (window_width // 2, 210),
+    )
+
+    draw_centered_text(
+        screen,
+        message,
+        message_font,
+        TEXT_COLOR,
+        (window_width // 2, 300),
+    )
+
+    primary_button.draw(
+        screen,
+        pygame.mouse.get_pos(),
+    )
+
+    home_button.draw(
+        screen,
+        pygame.mouse.get_pos(),
     )
