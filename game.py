@@ -1,6 +1,8 @@
 import pygame
 
-from ui import Button, draw_game_placeholder, draw_start_screen
+from arrow import Arrow
+from levels import LEVELS
+from ui import Button, draw_game_screen, draw_start_screen
 
 
 START = "start"
@@ -16,6 +18,10 @@ class Game:
         self.running = True
         self.state = START
 
+        self.level_index = 0
+        self.arrows = []
+        self.mistakes_left = 0
+
         window_width, _ = self.screen.get_size()
 
         self.start_button = Button(
@@ -27,12 +33,27 @@ class Game:
         )
 
         self.back_button = Button(
-            x=window_width // 2 - 120,
-            y=450,
-            width=240,
-            height=65,
+            x=35,
+            y=625,
+            width=160,
+            height=50,
             text="返回首页",
+            font_size=22,
         )
+
+        self.load_level(self.level_index)
+
+    def load_level(self, level_index):
+        """根据关卡数据创建当前关卡的箭头。"""
+        level = LEVELS[level_index]
+
+        self.level_index = level_index
+        self.mistakes_left = level["max_mistakes"]
+
+        self.arrows = [
+            Arrow(row, col, direction)
+            for row, col, direction in level["arrows"]
+        ]
 
     def handle_event(self, event):
         """处理键盘和鼠标事件。"""
@@ -55,6 +76,7 @@ class Game:
 
             if self.state == START:
                 if self.start_button.contains(mouse_position):
+                    self.load_level(0)
                     self.state = PLAYING
 
             elif self.state == PLAYING:
@@ -62,7 +84,7 @@ class Game:
                     self.state = START
 
     def update(self):
-        """更新游戏数据，后续将在这里更新动画。"""
+        """更新游戏数据，后续将在这里处理动画。"""
         pass
 
     def draw(self):
@@ -74,9 +96,15 @@ class Game:
             )
 
         elif self.state == PLAYING:
-            draw_game_placeholder(
-                self.screen,
-                self.back_button,
+            level = LEVELS[self.level_index]
+
+            draw_game_screen(
+                screen=self.screen,
+                level=level,
+                level_number=self.level_index + 1,
+                arrows=self.arrows,
+                mistakes_left=self.mistakes_left,
+                back_button=self.back_button,
             )
 
         pygame.display.flip()
@@ -89,6 +117,4 @@ class Game:
 
             self.update()
             self.draw()
-
-            # 将游戏刷新率限制为每秒 60 帧
             self.clock.tick(60)
