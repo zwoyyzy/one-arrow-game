@@ -2,13 +2,16 @@ import pygame
 
 from arrow import Arrow, DIRECTION_VECTORS, is_path_clear
 from levels import LEVELS
+from random_levels import generate_random_level
 from ui import (
     Button,
     draw_game_screen,
     draw_level_select_screen,
+    draw_pause_overlay,
     draw_result_screen,
     draw_start_screen,
     get_board_geometry,
+    get_font,
     get_grid_position,
 )
 
@@ -34,26 +37,33 @@ class Game:
         self.state = START
 
         self.level_index = 0
+        self.game_mode = "main"
+        self.current_level = LEVELS[0]
+        self.random_level = None
         self.arrows = []
         self.mistakes_left = 0
 
         self.feedback_message = ""
         self.feedback_end_time = 0
         self.blocked_arrow = None
+        self.hinted_arrow = None
         self.pending_game_over = False
         self.level_start_time = 0
         self.mistakes_used = 0
         self.result_time_seconds = 0
         self.moves_count = 0
+        self.auto_solving = False
+        self.auto_solve_next_time = 0
 
         window_width, _ = self.screen.get_size()
 
         self.start_button = Button(
             x=window_width // 2 - 120,
-            y=465,
+            y=450,
             width=240,
-            height=65,
-            text="开启解谜",
+            height=58,
+            text="主线关卡",
+            font_size=22,
         )
 
         self.back_button = Button(
@@ -67,31 +77,70 @@ class Game:
         )
 
         self.restart_button = Button(
-            x=670,
-            y=37,
-            width=120,
-            height=44,
+            x=660,
+            y=36,
+            width=92,
+            height=46,
             text="重置",
-            font_size=17,
+            font_size=16,
             outline=True,
         )
 
         self.pause_button = Button(
-            x=796,
-            y=37,
-            width=76,
-            height=44,
+            x=768,
+            y=36,
+            width=92,
+            height=46,
             text="暂停",
+            font_size=16,
+            outline=True,
+        )
+
+        self.hint_button = Button(
+            x=740,
+            y=602,
+            width=130,
+            height=36,
+            text="提示",
+            font_size=16,
+            outline=True,
+        )
+
+        self.auto_solve_button = Button(
+            x=740,
+            y=647,
+            width=130,
+            height=36,
+            text="AI 自动求解",
             font_size=14,
             outline=True,
         )
 
+        self.resume_button = Button(
+            x=window_width // 2 - 120,
+            y=380,
+            width=240,
+            height=58,
+            text="继续游戏",
+            font_size=22,
+        )
+
         self.level_select_button = Button(
             x=window_width // 2 - 120,
-            y=545,
+            y=522,
             width=240,
             height=58,
             text="关卡选择",
+            font_size=22,
+            outline=True,
+        )
+
+        self.random_mode_button = Button(
+            x=window_width // 2 - 120,
+            y=594,
+            width=240,
+            height=58,
+            text="随机挑战",
             font_size=22,
             outline=True,
         )
@@ -174,6 +223,8 @@ class Game:
         """根据关卡初始数据重新创建箭头。"""
         level = LEVELS[level_index]
 
+        self.game_mode = "main"
+        self.current_level = level
         self.level_index = level_index
         self.mistakes_left = level["max_mistakes"]
 
@@ -192,16 +243,51 @@ class Game:
         self.feedback_message = ""
         self.feedback_end_time = 0
         self.blocked_arrow = None
+        self.hinted_arrow = None
         self.pending_game_over = False
         self.level_start_time = pygame.time.get_ticks()
         self.mistakes_used = 0
         self.result_time_seconds = 0
         self.moves_count = 0
+        self.stop_auto_solve()
+
+    def load_random_level(self, create_new=True):
+        """载入随机挑战；点击重置时复用当前题目。"""
+        if create_new or self.random_level is None:
+            self.random_level = generate_random_level()
+
+        level = self.random_level
+        self.game_mode = "random"
+        self.current_level = level
+        self.level_index = 0
+        self.mistakes_left = 3
+        self.arrows = []
+
+        for row, col, direction in level["arrows"]:
+            arrow = Arrow(row, col, direction)
+            arrow.board_rows = level["rows"]
+            arrow.board_cols = level["cols"]
+            arrow.opacity = 0
+            self.arrows.append(arrow)
+
+        self.feedback_message = "随机挑战已生成！"
+        self.feedback_end_time = pygame.time.get_ticks() + 1200
+        self.blocked_arrow = None
+        self.hinted_arrow = None
+        self.pending_game_over = False
+        self.level_start_time = pygame.time.get_ticks()
+        self.mistakes_used = 0
+        self.result_time_seconds = 0
+        self.moves_count = 0
+        self.stop_auto_solve()
 
     def restart_level(self):
         """重新开始当前关卡。"""
-        current_level = self.level_index
-        self.load_level(current_level)
+        if self.game_mode == "random":
+            self.load_random_level(create_new=False)
+        else:
+            current_level = self.level_index
+            self.load_level(current_level)
         self.state = PLAYING
 
         # 用明显提示确认重置确实执行了，即使棋盘原本就是初始布局。
@@ -212,6 +298,23 @@ class Game:
         """从第一关开始新的游戏。"""
         self.load_level(0)
         self.state = PLAYING
+
+    def start_random_game(self):
+        """生成并开始一局新的随机挑战。"""
+        self.load_random_level(create_new=True)
+        self.state = PLAYING
+
+    def get_level(self):
+        """取得当前模式正在使用的关卡。"""
+        return self.current_level
+
+    def stop_auto_solve(self):
+        """停止 AI 自动求解并恢复按钮文字。"""
+        self.auto_solving = False
+        self.auto_solve_next_time = 0
+        if hasattr(self, "auto_solve_button"):
+            self.auto_solve_button.text = "AI 自动求解"
+            self.auto_solve_button.font = get_font(14, True)
 
     def find_arrow(self, row, col):
         """查找指定格子中可以点击的箭头。"""
@@ -225,6 +328,35 @@ class Game:
 
         return None
 
+    def show_hint(self):
+        """高亮一个当前可以安全飞出棋盘的箭头。"""
+        level = self.get_level()
+        safe_arrows = [
+            arrow
+            for arrow in self.arrows
+            if arrow.state == "idle"
+            and is_path_clear(
+                arrow,
+                self.arrows,
+                level["rows"],
+                level["cols"],
+            )
+        ]
+
+        if not safe_arrows:
+            self.hinted_arrow = None
+            self.feedback_message = "暂时没有可提示的箭头"
+        else:
+            # 连续点击提示时轮换推荐，避免总是指向同一个箭头。
+            if self.hinted_arrow in safe_arrows:
+                index = (safe_arrows.index(self.hinted_arrow) + 1) % len(safe_arrows)
+            else:
+                index = 0
+            self.hinted_arrow = safe_arrows[index]
+            self.feedback_message = "紫色高亮的箭头可以安全飞出！"
+
+        self.feedback_end_time = pygame.time.get_ticks() + 1800
+
     def is_input_locked(self):
         """动画或碰撞反馈期间禁止再次点击箭头。"""
         if any(
@@ -235,10 +367,60 @@ class Game:
 
         return self.blocked_arrow is not None
 
+    def toggle_auto_solve(self):
+        """启动或停止 AI 逐步自动求解。"""
+        if self.auto_solving:
+            self.stop_auto_solve()
+            self.feedback_message = "已停止自动求解"
+        else:
+            self.auto_solving = True
+            self.hinted_arrow = None
+            self.auto_solve_next_time = pygame.time.get_ticks()
+            self.auto_solve_button.text = "停止自动求解"
+            self.auto_solve_button.font = get_font(13, True)
+            self.feedback_message = "AI 正在分析并逐步求解……"
+
+        self.feedback_end_time = pygame.time.get_ticks() + 1200
+
+    def update_auto_solve(self):
+        """动画结束后自动点击一个路径畅通的箭头。"""
+        if not self.auto_solving or self.is_input_locked() or not self.arrows:
+            return
+
+        now = pygame.time.get_ticks()
+        if now < self.auto_solve_next_time:
+            return
+
+        level = self.get_level()
+        safe_arrow = next(
+            (
+                arrow
+                for arrow in self.arrows
+                if arrow.state == "idle"
+                and is_path_clear(
+                    arrow,
+                    self.arrows,
+                    level["rows"],
+                    level["cols"],
+                )
+            ),
+            None,
+        )
+
+        if safe_arrow is None:
+            self.stop_auto_solve()
+            self.feedback_message = "AI 未找到安全路径"
+            self.feedback_end_time = now + 1200
+            return
+
+        self.handle_arrow_click(safe_arrow)
+        self.auto_solve_next_time = now + 520
+
     def handle_arrow_click(self, arrow):
         """处理玩家点击箭头后的结果。"""
-        level = LEVELS[self.level_index]
+        level = self.get_level()
         self.moves_count += 1
+        self.hinted_arrow = None
 
         path_clear = is_path_clear(
             arrow=arrow,
@@ -296,7 +478,7 @@ class Game:
 
     def update_flying_arrows(self, delta_time):
         """更新箭头飞出动画。"""
-        level = LEVELS[self.level_index]
+        level = self.get_level()
         finished_arrows = []
 
         _, _, actual_cell_size = get_board_geometry(
@@ -339,13 +521,16 @@ class Game:
             self.arrows.remove(arrow)
 
         if finished_arrows and not self.arrows:
+            self.stop_auto_solve()
             self.feedback_message = ""
             self.result_time_seconds = max(
                 1,
                 (pygame.time.get_ticks() - self.level_start_time) // 1000,
             )
 
-            if self.level_index == len(LEVELS) - 1:
+            if self.game_mode == "random":
+                self.state = ALL_CLEAR
+            elif self.level_index == len(LEVELS) - 1:
                 self.state = ALL_CLEAR
             else:
                 self.state = LEVEL_CLEAR
@@ -387,6 +572,9 @@ class Game:
             elif self.level_select_button.contains(mouse_position):
                 self.state = LEVEL_SELECT
 
+            elif self.random_mode_button.contains(mouse_position):
+                self.start_random_game()
+
         elif self.state == LEVEL_SELECT:
             if self.select_back_button.contains(mouse_position):
                 self.state = START
@@ -410,10 +598,19 @@ class Game:
                 self.state = PAUSED
                 return
 
+            if self.hint_button.contains(mouse_position):
+                if not self.is_input_locked():
+                    self.show_hint()
+                return
+
+            if self.auto_solve_button.contains(mouse_position):
+                self.toggle_auto_solve()
+                return
+
             if self.is_input_locked():
                 return
 
-            level = LEVELS[self.level_index]
+            level = self.get_level()
 
             grid_position = get_grid_position(
                 self.screen,
@@ -451,13 +648,18 @@ class Game:
 
         elif self.state == ALL_CLEAR:
             if self.all_restart_button.contains(mouse_position):
-                self.start_new_game()
+                if self.game_mode == "random":
+                    self.start_random_game()
+                else:
+                    self.start_new_game()
 
             elif self.home_button.contains(mouse_position):
                 self.state = START
 
         elif self.state == PAUSED:
-            if self.pause_button.contains(mouse_position):
+            if self.resume_button.contains(mouse_position):
+                self.state = PLAYING
+            elif self.pause_button.contains(mouse_position):
                 self.state = PLAYING
             elif self.back_button.contains(mouse_position):
                 self.state = START
@@ -490,6 +692,7 @@ class Game:
 
         self.update_flying_arrows(delta_time)
         self.update_feedback()
+        self.update_auto_solve()
 
         # 关卡载入或重置后，箭头平滑淡入。
         for arrow in self.arrows:
@@ -503,6 +706,7 @@ class Game:
                 self.screen,
                 self.start_button,
                 self.level_select_button,
+                self.random_mode_button,
             )
 
         elif self.state == LEVEL_SELECT:
@@ -513,7 +717,7 @@ class Game:
             )
 
         elif self.state == PLAYING:
-            level = LEVELS[self.level_index]
+            level = self.get_level()
 
             draw_game_screen(
                 screen=self.screen,
@@ -526,10 +730,14 @@ class Game:
                 feedback_message=self.feedback_message,
                 blocked_arrow=self.blocked_arrow,
                 pause_button=self.pause_button,
+                hint_button=self.hint_button,
+                auto_solve_button=self.auto_solve_button,
+                hinted_arrow=self.hinted_arrow,
+                mode_text=("随机挑战" if self.game_mode == "random" else "主线关卡"),
             )
 
         elif self.state == LEVEL_CLEAR:
-            level = LEVELS[self.level_index]
+            level = self.get_level()
             draw_game_screen(
                 self.screen, level, self.level_index + 1,
                 self.arrows, self.mistakes_left,
@@ -548,7 +756,7 @@ class Game:
             )
 
         elif self.state == GAME_OVER:
-            level = LEVELS[self.level_index]
+            level = self.get_level()
             draw_game_screen(
                 self.screen, level, self.level_index + 1,
                 self.arrows, self.mistakes_left,
@@ -566,7 +774,7 @@ class Game:
             )
 
         elif self.state == ALL_CLEAR:
-            level = LEVELS[self.level_index]
+            level = self.get_level()
             draw_game_screen(
                 self.screen, level, self.level_index + 1,
                 self.arrows, self.mistakes_left,
@@ -575,8 +783,12 @@ class Game:
             )
             draw_result_screen(
                 screen=self.screen,
-                title="全部通关",
-                message=f"恭喜你完成了全部 {len(LEVELS)} 个关卡！",
+                title=("随机挑战通关" if self.game_mode == "random" else "全部通关"),
+                message=(
+                    "恭喜你完成了本次随机挑战！"
+                    if self.game_mode == "random"
+                    else f"恭喜你完成了全部 {len(LEVELS)} 个关卡！"
+                ),
                 title_color=(45, 150, 90),
                 primary_button=self.all_restart_button,
                 home_button=self.home_button,
@@ -584,7 +796,7 @@ class Game:
             )
 
         elif self.state == PAUSED:
-            level = LEVELS[self.level_index]
+            level = self.get_level()
             draw_game_screen(
                 screen=self.screen,
                 level=level,
@@ -593,21 +805,11 @@ class Game:
                 mistakes_left=self.mistakes_left,
                 back_button=self.back_button,
                 restart_button=self.restart_button,
-                feedback_message="游戏已暂停 · 点击右上角继续",
+                feedback_message="游戏已暂停",
                 blocked_arrow=None,
                 pause_button=self.pause_button,
             )
-            shade = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
-            shade.fill((15, 15, 20, 135))
-            self.screen.blit(shade, (0, 0))
-            from ui import BLACK, draw_centered_text, get_font
-            draw_centered_text(
-                self.screen,
-                "游戏已暂停",
-                get_font(48, True),
-                BLACK,
-                (self.screen.get_width() // 2, self.screen.get_height() // 2),
-            )
+            draw_pause_overlay(self.screen, self.resume_button)
 
         pygame.display.flip()
 
