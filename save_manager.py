@@ -2,11 +2,18 @@
 
 import json
 from pathlib import Path
+import sys
 
 
-SAVE_FILE = Path(__file__).with_name("savegame.json")
-PROGRESS_FILE = Path(__file__).with_name("level_progress.json")
-USERS_FILE = Path(__file__).with_name("users_data.json")
+if getattr(sys, "frozen", False):
+    # 打包后把进度写在 exe 所在目录，方便随游戏文件夹一起保存。
+    DATA_DIR = Path(sys.executable).resolve().parent
+else:
+    DATA_DIR = Path(__file__).resolve().parent
+
+SAVE_FILE = DATA_DIR / "savegame.json"
+PROGRESS_FILE = DATA_DIR / "level_progress.json"
+USERS_FILE = DATA_DIR / "users_data.json"
 
 
 def _read_json(path, default):

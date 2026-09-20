@@ -6,3 +6,8 @@ level_progress.json
 level_progress.tmp
 users_data.json
 users_data.tmp
+.build_tools/
+build/
+dist/
+release/
+*.spec

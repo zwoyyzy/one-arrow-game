@@ -497,11 +497,20 @@ def draw_level_icon(screen, level_index, center, muted=False):
     x, y = center
 
     if level_index == 0:
-        pygame.draw.line(screen, ink, (x - 15, y), (x + 10, y), 4)
-        pygame.draw.polygon(screen, accent, [(x + 5, y - 8), (x + 18, y), (x + 5, y + 8)])
-        pygame.draw.polygon(screen, ink, [(x + 5, y - 8), (x + 18, y), (x + 5, y + 8)], 2)
-        pygame.draw.polygon(screen, accent, [(x - 16, y), (x - 23, y - 5), (x - 13, y - 4), (x - 13, y + 4), (x - 23, y + 5)])
-        pygame.draw.polygon(screen, ink, [(x - 16, y), (x - 23, y - 5), (x - 13, y - 4), (x - 13, y + 4), (x - 23, y + 5)], 2)
+        # 严格控制在图标底座内部，左右各保留至少 4px 留白。
+        pygame.draw.line(screen, ink, (x - 10, y), (x + 7, y), 4)
+        head = [(x + 4, y - 7), (x + 15, y), (x + 4, y + 7)]
+        pygame.draw.polygon(screen, accent, head)
+        pygame.draw.polygon(screen, ink, head, 2)
+        feathers = [
+            (x - 10, y),
+            (x - 16, y - 4),
+            (x - 8, y - 3),
+            (x - 8, y + 3),
+            (x - 16, y + 4),
+        ]
+        pygame.draw.polygon(screen, accent, feathers)
+        pygame.draw.polygon(screen, ink, feathers, 2)
     elif level_index == 1:
         for offset, color in ((-5, (194, 102, 86)), (0, accent), (5, (73, 131, 169))):
             pygame.draw.line(screen, ink, (x - 16, y + offset), (x + 7, y + offset), 2)
