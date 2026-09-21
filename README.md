@@ -6,11 +6,8 @@
 
 ## 游戏截图
 
-### 关卡选择
 
-![关卡选择界面](docs/images/level-select.png)
-
-更多运行截图和演示内容见博客文章。
+更多运行截图和演示内容见博客文章https://www.cnblogs.com/zwoyyzy/p/23048629
 
 ## 游戏规则
 
