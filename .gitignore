@@ -17,3 +17,8 @@ release/
 
 # 开发过程中生成的预览图片
 work_*.png
+
+# pytest 测试缓存和临时文件
+.pytest_cache/
+.pytest_temp/
+tests/__pycache__/
