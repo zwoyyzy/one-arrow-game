@@ -6,7 +6,7 @@
 
 玩家点击棋盘中的箭头。如果箭头前进方向上没有其他箭头，箭头就飞出棋盘并消失；如果存在其他箭头，则显示碰撞反馈，并扣除一次失误机会。
 
-游戏至少包含三个可以正常通关的关卡。
+游戏包含 5 个可以正常通关的主线关卡，并提供随机挑战模式。每个主线关卡均由本人实际试玩并验证了通关顺序。
 
 ## 2. 主要功能
 
@@ -78,18 +78,21 @@ ALL_CLEAR    全部关卡通关
 ## 6. 代码结构
 
 ```text
-se_onearrowgame/
+one-arrow-game/
 ├── main.py
 ├── game.py
 ├── arrow.py
 ├── levels.py
+├── random_levels.py
 ├── ui.py
-├── assets/
+├── audio.py
+├── save_manager.py
+├── requirements.txt
 ├── tests/
 ├── docs/
 │   └── design.md
 ├── README.md
-└── requirements.txt
+└── release_instructions.txt
 ```
 
 各文件的作用：
@@ -97,8 +100,11 @@ se_onearrowgame/
 - `main.py`：程序入口和 Pygame 主循环；
 - `game.py`：游戏状态、点击处理和关卡流程；
 - `arrow.py`：箭头数据和路径判断；
-- `levels.py`：保存三个关卡的数据；
+- `levels.py`：保存 5 个固定主线关卡的数据；
+- `random_levels.py`：生成并验证可通关的随机挑战关卡；
 - `ui.py`：绘制界面、棋盘、箭头和按钮；
+- `audio.py`：管理背景音乐和游戏音效；
+- `save_manager.py`：保存和读取主线游戏进度及成绩；
 - `tests/`：保存自动化测试。
 
 ## 7. 开发顺序
@@ -108,9 +114,10 @@ se_onearrowgame/
 3. 实现鼠标点击和路径判断；
 4. 实现飞出动画和碰撞反馈；
 5. 实现失误、失败和重新开始；
-6. 设计并试玩三个关卡；
+6. 设计并试玩 5 个主线关卡；
 7. 实现通关和关卡切换；
-8. 完成测试、README 和游戏截图。
+8. 增加随机挑战、提示、AI 自动求解、计时星级、存档和音效等扩展功能；
+9. 完成测试、README 和游戏截图。
 
 ## 8. 测试计划
 

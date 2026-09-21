@@ -10,7 +10,7 @@
 
 ![关卡选择界面](docs/images/level-select.png)
 
-> 可继续在 `docs/images/` 中补充开始界面、游戏界面和结算界面截图。
+更多运行截图和演示内容见博客文章。
 
 ## 游戏规则
 
@@ -93,17 +93,21 @@ python -m pip install -r requirements.txt
 python main.py
 ```
 
-如果使用本项目开发时配置的 Conda 环境，也可以在 PowerShell 中执行：
-
-```powershell
-& "D:\conda_envs\one_arrow_game\python.exe" main.py
-```
-
 ### 方式二：运行 Windows 可执行版
 
-解压发布的 ZIP 压缩包，保留其中的完整文件夹结构，然后双击 `OneArrowGame.exe`。可执行版适用于 Windows 10/11 64 位系统，不需要另外安装 Python 或 Pygame。
+可执行版本发布在 GitHub [Releases](https://github.com/zwoyyzy/one-arrow-game/releases/tag/v1.0.0) 页面。下载该页面中的 Windows ZIP 文件后解压，保留其中的完整文件夹结构，然后双击 `OneArrowGame.exe`。可执行版适用于 Windows 10/11 64 位系统，不需要另外安装 Python 或 Pygame。
 
 游戏进度会写入 `OneArrowGame.exe` 所在目录，因此建议将整个游戏文件夹放在桌面或文档等具有写入权限的位置。
+
+## 运行测试
+
+在项目根目录执行：
+
+```bash
+python -m pytest -v
+```
+
+自动化测试代码位于 `tests/test_game.py`。界面布局、动画观感和声音效果仍需要人工试玩验证。
 
 ## 操作说明
 
